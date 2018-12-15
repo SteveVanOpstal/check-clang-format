@@ -1,0 +1,30 @@
+{
+  "name": "clang-format-check",
+  "version": "1.1.1",
+  "description": "husky pre-commit clang-format hook",
+  "main": "index.js",
+  "scripts": {
+    "clang-format": "clang-format"
+  },
+  "dependencies": {
+    "clang-format": "^1.2.4",
+    "nodegit": "^0.23.0",
+    "xml-reader": "^2.4.3"
+  },
+  "devDependencies": {
+    "@types/nodegit": "^0.22.5"
+  },
+  "bin": {
+    "clang-format-check": "index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SteveVanOpstal/clang-format-check.git"
+  },
+  "author": "Steve Van Opstal",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/SteveVanOpstal/clang-format-check/issues"
+  },
+  "homepage": "https://github.com/SteveVanOpstal/clang-format-check#readme"
+}
