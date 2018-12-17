@@ -25,6 +25,17 @@ async function getStagedChanges() {
   return diff.patches();
 }
 
+async function getUnstagedChanges() {
+  const repo = await repo$;
+  const head = await repo.getHeadCommit();
+  if (!head) {
+    return [];
+  }
+  const diff = await nodegit.Diff.indexToWorkdir(repo, null);
+
+  return diff.patches();
+}
+
 function linesToRanges(lineNumbers) {
   if (!lineNumbers) {
     return [];
@@ -46,14 +57,18 @@ function linesToRanges(lineNumbers) {
     return ranges;
   });
 }
+else {
+  return [];
+}
+}
 
-async function gitDiffStaged() {
-  const patches = await getStagedChanges();
+async function gitDiff(patches$) {
+  const patches = await patches$;
 
   const files = [];
   for (const patch of patches) {
     const hunks = await patch.hunks();
-    const file = {path: patch.newFile().path(), lineRanges: [], lineLenghts: []};
+    const file = {path: patch.newFile().path(), lineRanges: []};
 
     for (const hunk of hunks) {
       const lines = await hunk.lines();
@@ -64,11 +79,8 @@ async function gitDiffStaged() {
         if (line.newLineno() > -1) {
           if (originChar === '+') {
             lineNumbers.push(line.newLineno());
-            file.lineLenghts.push(line.contentLen());
           } else if (originChar === '-') {
             lineNumbers.push(line.newLineno());
-          } else {
-            file.lineLenghts.push(line.contentLen());
           }
         }
       }
@@ -80,7 +92,29 @@ async function gitDiffStaged() {
     files.push(file);
   }
 
-  return files;
+  if (files.length > 0) {
+    return files.reduce((previous, current) => {
+      if (typeof previous === 'array') {
+        const index = previous.findIndex((file) => {
+          return file.path === current.path;
+        });
+        previous[index].lineRanges.concat(current.lineRanges);
+        return previous;
+      } else {
+        return [previous];
+      }
+    });
+  } else {
+    return [];
+  }
+}
+
+async function gitDiffStaged() {
+  return gitDiff(getStagedChanges());
+}
+
+async function gitDiffUnstaged() {
+  return gitDiff(getUnstagedChanges());
 }
 
 // function clangFormat(file, lines, style, done) {
