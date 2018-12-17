@@ -26,6 +26,12 @@ async function getStagedChanges() {
 }
 
 function linesToRanges(lineNumbers) {
+  if (!lineNumbers) {
+    return [];
+  }
+  if (lineNumbers.length === 1) {
+    return [{first: lineNumbers[0], last: lineNumbers[0]}];
+  }
   return lineNumbers.reduce((ranges, current) => {
     const lastRange = ranges[ranges.length - 1];
 
@@ -117,13 +123,17 @@ gitDiffStaged()
 
       for (const file of diff) {
         const lines = file.lineRanges.map((lineRange) => `-lines=${lineRange.first}:${lineRange.last}`);
-        let args = [`-style=file`, '-output-replacements-xml', ...lines, file.path];
-        const result = spawnClangFormat(args, () => {}, ['ignore', 'pipe', process.stderr]);
+        let args = [`-style=file`, '-output-replacements-xml', ...lines];
+        const result = spawnClangFormat(args, () => {}, ['pipe', 'pipe', process.stderr]);
+
+        // result.stdin.write(file.content);
+        result.stdin.end();
 
         const replacementLineRanges = [];
         reader.on('tag:replacement', (data) => {
           console.log(data.attributes.offset + ' ' + data.attributes.length);
           // console.log(data.children[0].value.length);
+          console.log(data.value);
           console.log(offsetToLine(data.attributes.offset, file.lineLenghts));
           // replacementLineRanges.push();
         });
