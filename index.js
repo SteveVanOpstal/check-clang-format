@@ -37,7 +37,7 @@ async function getUnstagedChanges() {
 }
 
 function linesToRanges(lineNumbers) {
-  if (!lineNumbers) {
+  if (!lineNumbers || !lineNumbers.length) {
     return [];
   }
   if (lineNumbers.length === 1) {
@@ -56,10 +56,6 @@ function linesToRanges(lineNumbers) {
 
     return ranges;
   });
-}
-else {
-  return [];
-}
 }
 
 async function gitDiff(patches$) {
@@ -92,7 +88,7 @@ async function gitDiff(patches$) {
     files.push(file);
   }
 
-  if (files.length > 0) {
+  if (files.length) {
     return files.reduce((previous, current) => {
       if (typeof previous === 'array') {
         const index = previous.findIndex((file) => {
@@ -135,22 +131,6 @@ async function gitAddFile() {
   const index = await repo.index();
 }
 
-function offsetToLine(offset, lineLenghts) {
-  return lineLenghts
-      .reduce((result, current) => {
-        if (!result.fileOffset) {
-          return {line: 0, fileOffset: current};
-        }
-        if (result.fileOffset >= offset) {
-          return result;
-        }
-        result.fileOffset += current;
-        result.line += 1;
-        return result;
-      })
-      .line;
-}
-
 gitDiffStaged()
     .then((diff) => {
       console.log(diff);
@@ -168,7 +148,6 @@ gitDiffStaged()
           console.log(data.attributes.offset + ' ' + data.attributes.length);
           // console.log(data.children[0].value.length);
           console.log(data.value);
-          console.log(offsetToLine(data.attributes.offset, file.lineLenghts));
           // replacementLineRanges.push();
         });
 
