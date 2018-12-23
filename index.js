@@ -5,8 +5,8 @@ const nodegit = require('nodegit');
 const path = require('path');
 const spawnClangFormat = require('clang-format').spawnClangFormat;
 
-const XmlReader = require('xml-reader');
-const reader = XmlReader.create({stream: true});
+// const XmlReader = require('xml-reader');
+// const reader = XmlReader.create({stream: true});
 
 const currentRepoPath = path.resolve(__dirname, './.git');
 
@@ -21,7 +21,6 @@ async function getStagedChanges() {
     return [];
   }
   const diff = await nodegit.Diff.treeToIndex(repo, await head.getTree(), null);
-
   return diff.patches();
 }
 
@@ -32,7 +31,6 @@ async function getUnstagedChanges() {
     return [];
   }
   const diff = await nodegit.Diff.indexToWorkdir(repo, null);
-
   return diff.patches();
 }
 
@@ -41,17 +39,17 @@ function linesToRanges(lineNumbers) {
     return [];
   }
   if (lineNumbers.length === 1) {
-    return [{first: lineNumbers[0], last: lineNumbers[0]}];
+    return [{start: lineNumbers[0], end: lineNumbers[0]}];
   }
   return lineNumbers.reduce((ranges, current) => {
     const lastRange = ranges[ranges.length - 1];
 
     if (!ranges || !ranges.length) {
-      return [{first: ranges, last: current}];
-    } else if (!lastRange || lastRange.last + 1 !== current) {
-      ranges.push({first: current, last: current});
+      return [{start: ranges, end: current}];
+    } else if (!lastRange || lastRange.end + 1 !== current) {
+      ranges.push({start: current, end: current});
     } else {
-      ranges[ranges.length - 1].last = current;
+      ranges[ranges.length - 1].end = current;
     }
 
     return ranges;
@@ -60,7 +58,6 @@ function linesToRanges(lineNumbers) {
 
 async function gitDiff(patches$) {
   const patches = await patches$;
-
   const files = [];
   for (const patch of patches) {
     const hunks = await patch.hunks();
@@ -88,21 +85,23 @@ async function gitDiff(patches$) {
     files.push(file);
   }
 
-  if (files.length) {
-    return files.reduce((previous, current) => {
-      if (typeof previous === 'array') {
-        const index = previous.findIndex((file) => {
-          return file.path === current.path;
-        });
-        previous[index].lineRanges.concat(current.lineRanges);
-        return previous;
-      } else {
-        return [previous];
-      }
-    });
-  } else {
+  if (!files || !files.length) {
     return [];
   }
+  if (files.length === 1) {
+    return files;
+  }
+  return files.reduce((previous, current) => {
+    if (typeof previous === 'array') {
+      const index = previous.findIndex((file) => {
+        return file.path === current.path;
+      });
+      previous[index].lineRanges.concat(current.lineRanges);
+      return previous;
+    } else {
+      return [previous];
+    }
+  });
 }
 
 async function gitDiffStaged() {
@@ -113,67 +112,91 @@ async function gitDiffUnstaged() {
   return gitDiff(getUnstagedChanges());
 }
 
-// function clangFormat(file, lines, style, done) {
-//   let args = [`-style=${style}`, '-output-replacements-xml', ...lines, file.path];
-//   console.log(args);
-//   let result = spawnClangFormat(args, done, ['ignore', 'pipe', process.stderr]);
-//   if (result) {  // must be ChildProcess
-//     return result;
-//   } else {
-//     // We shouldn't be able to reach this line, because it's not possible to
-//     // set the --glob arg in this function.
-//     throw new Error('Can\'t get output stream when --glob flag is set');
-//   }
-// }
+async function gitGetFileContent(path) {
+  const repo = await repo$;
+  const index = await repo.refreshIndex();
+  const indexEntry = await index.getByPath(path);
+  return repo.getBlob(indexEntry.id);
+}
 
 async function gitAddFile() {
   const repo = await repo$;
-  const index = await repo.index();
+  const index = await repo.refreshIndex();
 }
 
-gitDiffStaged()
+function spawnClangFormatAsync(path, input) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    const subProcess = spawnClangFormat(['-style=file', '-assume-filename', path], (error) => {
+      if (error) {
+        console.error(error.toString());
+        reject(false);
+      } else {
+        resolve(chunks.join());
+      }
+    }, 'pipe');
+    subProcess.stdout.on('data', (chunk) => {
+      chunks.push(chunk);
+    });
+    subProcess.stderr.on('data', (error) => {
+      console.error(error.toString());
+      reject(false);
+    });
+    subProcess.stdin.write(input);
+    subProcess.stdin.end();
+  });
+}
+
+async function formatStaged() {
+  const diff = await gitDiffStaged();
+
+  for (const file of diff) {
+    // const lines = file.lineRanges.map((lineRange) => `-lines=${lineRange.start}:${lineRange.end}`);
+    const content = await gitGetFileContent(file.path);
+    const formattedFile = await spawnClangFormatAsync(file.path, content.toString());
+
+    if (formattedFile) {
+      // const test = await nodegit.Diff.blobToBuffer(content, null, formattedFile, null, {}, null, null, null, (que) => {
+      //   console.log(que);
+      // })
+      // console.log(test);
+
+      console.log(formattedFile);
+    }
+    // console.log(formattedFile);
+
+    // const replacementLineRanges = [];
+    // reader.on('tag:replacement', (data) => {
+    //   console.log(data.attributes.offset + ' ' + data.attributes.length);
+    //   // console.log(data.children[0].value.length);
+    //   console.log(data.value);
+    //   // replacementLineRanges.push();
+    // });
+
+    // reader.on(
+    //     'done',
+    //     (data) => {
+    //       console.log(data);
+    //     });
+
+    // const result = clangFormat(
+    //     file, lines, 'file',
+    //     (que) => {
+
+    //     });
+    // result.stdout.on('data', (data) => {
+    //   if (data.indexOf('</replacement>') > -1) {
+    //     let args = [`-style=file`, '-i', ...lines, file.path];
+    //     spawnClangFormat(args, done, ['ignore', 'pipe', process.stderr]);
+    //     gitAddFile().then();
+    //   }
+    // });
+  }
+}
+
+formatStaged()
     .then((diff) => {
       console.log(diff);
-
-      for (const file of diff) {
-        const lines = file.lineRanges.map((lineRange) => `-lines=${lineRange.first}:${lineRange.last}`);
-        let args = [`-style=file`, '-output-replacements-xml', ...lines];
-        const result = spawnClangFormat(args, () => {}, ['pipe', 'pipe', process.stderr]);
-
-        // result.stdin.write(file.content);
-        result.stdin.end();
-
-        const replacementLineRanges = [];
-        reader.on('tag:replacement', (data) => {
-          console.log(data.attributes.offset + ' ' + data.attributes.length);
-          // console.log(data.children[0].value.length);
-          console.log(data.value);
-          // replacementLineRanges.push();
-        });
-
-        reader.on(
-            'done',
-            (data) => {
-
-            });
-
-        result.stdout.on('data', (chunk) => {
-          reader.parse(chunk.toString());
-        });
-
-        // const result = clangFormat(
-        //     file, lines, 'file',
-        //     (que) => {
-
-        //     });
-        // result.stdout.on('data', (data) => {
-        //   if (data.indexOf('</replacement>') > -1) {
-        //     let args = [`-style=file`, '-i', ...lines, file.path];
-        //     spawnClangFormat(args, done, ['ignore', 'pipe', process.stderr]);
-        //     gitAddFile().then();
-        //   }
-        // });
-      }
     })
     .catch((err) => {
       console.log(err);
